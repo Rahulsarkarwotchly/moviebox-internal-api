@@ -14,6 +14,77 @@ The API servers utilize strict header-based filtering to block unauthorized web 
 | `Accept` | `application/json` | JSON response requirement. |
 | `Content-Type` | `application/json;charset=UTF-8` | POST payload format. |
 | `Referer` | `https://api6.aoneroom.com/` | Domain authority for DASH clusters. |
+| `X-Client-Token` | `timestamp,md5(reversed_timestamp)` | Cryptographic guest verification token. |
+| `x-tr-signature` | `timestamp|2|base64(hmac-md5(canonical))` | High-level request verification signature. |
+| `X-Client-Info` | `{JSON}` | Serialized device, language, and network metadata. |
+| `X-Client-Status` | `0` or client status flags | Runtime client operational state. |
+| `X-Play-Mode` | `2` | Configures playback stream resolving context. |
+| `Authorization` | `Bearer <Token>` | User session token (refreshed via response `x-user`). |
+
+### **Cryptographic Token Handshake (`X-Client-Token`)**
+To authorize requests without an active login token, the client generates a dynamic signature header via an interceptor (`com.transsion.baselib.net.f`):
+1. Get the current Unix epoch timestamp in milliseconds: `timestamp = str(int(time.time() * 1000))`
+2. Reverse the timestamp characters: `reversed = timestamp[::-1]`
+3. Calculate the MD5 hex digest of the reversed timestamp: `hash = md5(reversed)`
+4. Concatenate to build the token: `X-Client-Token: timestamp + "," + hash`
+
+### **Cryptographic App Signature (`x-tr-signature`)**
+For requests going to the Android BFF endpoints, the server validates a signature of the HTTP request payload and headers:
+1. **Rebuild Sorted Query String**: Take all URL query parameters, sort them alphabetically by key, and concatenate them as `key=value` separated by `&`. Do not percent-encode values.
+2. **Hash the Request Body**: If a request body exists, compute the MD5 hex hash of the first 100KB (`102,400` bytes) of the payload.
+3. **Build the Canonical Request String**:
+   ```
+   [METHOD]\n
+   [ACCEPT_HEADER]\n
+   [CONTENT_TYPE_HEADER]\n
+   [BODY_LENGTH]\n
+   [TIMESTAMP_MS]\n
+   [BODY_MD5_HASH]\n
+   [CANONICAL_PATH_AND_QUERY]
+   ```
+4. **Sign the Canonical String**:
+   * Decode the base64-encoded Gateway Secret Key (Default: `76iRl07s0xSN9jqmEWAt79EBJZulIQIsV64FZr2O`, Alt: `Xqn2nnO41/L92o1iuXhSLHTbXvY4Z5ZZ62m8mSLA`).
+   * Sign the UTF-8 bytes of the Canonical String using **HMAC-MD5** with the decoded key.
+5. **Format Signature**: Concatenate the signature timestamp, format version (`2`), and base64-encoded signature digest:
+   `x-tr-signature: timestamp_ms + "|2|" + base64_encode(hmac_md5_digest)`
+
+### **Device Metadata Header (`X-Client-Info`)**
+Contains serialized JSON data that provides system, network, and region parity:
+```json
+{
+  "package_name": "com.community.oneroom",
+  "version_name": "3.0.03.0529.03",
+  "version_code": 50020042,
+  "os": "android",
+  "os_version": "12",
+  "install_ch": "ps",
+  "device_id": "<32_char_hex_id>",
+  "install_store": "ps",
+  "gaid": "<google_advertising_id_uuid>",
+  "brand": "Redmi",
+  "model": "2201117TG",
+  "system_language": "en",
+  "net": "NETWORK_WIFI",
+  "region": "US",
+  "timezone": "America/New_York",
+  "sp_code": "40401",
+  "X-Play-Mode": "2"
+}
+```
+
+### **Global vs. Regional App Identifiers**
+* **Global App Variant**:
+  * **Package Name**: `com.community.oneroom` (and `com.community.moviebox`)
+  * **Target Version**: `3.0.11.1230.03` (Global users, excluding India)
+  * **Base Domains**: `https://i-api.aoneroom.com` (Global BFF cluster) and `https://api.aoneroom.com`
+  * **Deep Link Verification Hosts**:
+    * `h5.inmoviebox.com`
+    * `moviebox.ac`
+    * `moviebox.ph`
+* **Regional (India) App Variant**:
+  * **Package Name**: `com.community.mbox.in` (SubRoom App wrapper)
+  * **Target Version**: `3.0.15.0513.03`
+  * **Base Domains**: `https://api.inmoviebox.com` and `https://api6.aoneroom.com`
 
 ### **Media Verifier Headers (FFmpeg/ExoPlayer)**
 Used during media segment requests to bypass CDN-level 403 Forbidden errors.
@@ -80,6 +151,10 @@ The app performs a HEAD request (Handshake) to the CDN before playback. This tri
 ## 4. Internal Secrets (Static)
 Discovered via `AndroidManifest.xml` and Smali string decryption.
 *   **Gateway Secret**: `76iRl07s0xSN9jqmEWAt79EBJZulIQIsV64FZr2O` (Used for sign calculation in some clusters).
+*   **ByteDance Gecko / Pangle SDK Access Key**: `f36c832c8dbb162c49b46a7a6dd47fbd` (Used during Pangle/Gecko dynamic asset loader initialization)
+*   **Transsion WeFeed Service Secret**: `df70dbad6215444ca9e87ee1078cc681`
+*   **Transsion BuzzBox Service Secret**: `a6b574246ecb4ab99cd00f74a621743a`
+*   **Transsion Online Course Service Secret**: `c63c7b2a952c42ab9d5e3fccf0e213bf`
 
 ---
 
@@ -135,6 +210,22 @@ The following endpoints were extracted directly from the application's service m
 *   `/wefeed-mobile-bff/subject-api/topic-list`
 *   `/wefeed-mobile-bff/subject-api/trending/v2`
 *   `/wefeed-mobile-bff/subject-api/want-to-see`
+*   `/wefeed-mobile-bff/subject-api/bottom-tab`: Bottom tab layout configuration.
+*   `/wefeed-mobile-bff/subject-api/detail-rec`: Contextual detail recommendations.
+*   `/wefeed-mobile-bff/subject-api/dub-info`: Available audio dub languages.
+*   `/wefeed-mobile-bff/subject-api/filter-items`: Filter parameters for categories.
+*   `/wefeed-mobile-bff/subject-api/list`: Lists items within subjects.
+*   `/wefeed-mobile-bff/subject-api/play-related-rec`: Related content suggestions post-resolution.
+*   `/wefeed-mobile-bff/subject-api/resource-position`: Tracking position of static resources.
+*   `/wefeed-mobile-bff/subject-api/search-rank/v2`: V2 query rank suggestions.
+*   `/wefeed-mobile-bff/subject-api/search-suggest`: Instant search suggestions.
+*   `/wefeed-mobile-bff/subject-api/search/v2`: Optimized V2 search endpoint.
+*   `/wefeed-mobile-bff/subject-api/staff-info`: Cast & Crew detailed metadata.
+*   `/wefeed-mobile-bff/subject-api/staff-related`: Content related to specific staff.
+*   `/wefeed-mobile-bff/subject-api/staff-subject-list`: Catalog items associated with staff members.
+*   `/wefeed-mobile-bff/subject-api/subtitle-search`: Subtitle track listing / search.
+*   `/wefeed-mobile-bff/subject-api/want-to-see-staff`: Watchlist for specific staff updates.
+*   `/wefeed-mobile-bff/subject-api/widget`: Dynamic UI widgets content.
 
 ### **User & Identity APIs (`/user-api/`)**
 *   `/wefeed-mobile-bff/user-api/block`
@@ -150,6 +241,105 @@ The following endpoints were extracted directly from the application's service m
 *   `/wefeed-mobile-bff/user-api/reset-password`
 *   `/wefeed-mobile-bff/user-api/third-login`
 *   `/wefeed-mobile-bff/user-api/unblock`
+*   `/wefeed-mobile-bff/user-api/profile/v3`: Advanced user identity profile.
+*   `/wefeed-mobile-bff/user-api/submit-prefer`: Save user category preferences.
+
+### **User Profiles, Preferences & Location**
+*   `/wefeed-mobile-bff/profile/consume-judge`: User subscription validation checks.
+*   `/wefeed-mobile-bff/profile/preference-options`: Get default preferences list.
+*   `/wefeed-mobile-bff/profile/preference-submit`: Submit user preferences layout.
+*   `/wefeed-mobile-bff/location/near-address`: Geolocated user address lookups.
+
+### **UGC (User Generated Content) APIs (`/ugc/`)**
+*   `/wefeed-mobile-bff/ugc/category/lev1-sub-list`: UGC subcategory listings.
+*   `/wefeed-mobile-bff/ugc/collection/download-list`: UGC download collection.
+*   `/wefeed-mobile-bff/ugc/collection/play-list`: UGC playlists details.
+*   `/wefeed-mobile-bff/ugc/collection/resolution`: UGC video resolution options.
+*   `/wefeed-mobile-bff/ugc/operating/genre-top`: UGC trending genres.
+*   `/wefeed-mobile-bff/ugc/operating/tab-operating`: UGC layouts and banners.
+*   `/wefeed-mobile-bff/ugc/operating/tab-rank-list`: UGC trending ranking list.
+*   `/wefeed-mobile-bff/ugc/search/everyone`: UGC public searches feed.
+*   `/wefeed-mobile-bff/ugc/search/rank`: Popular UGC search terms.
+*   `/wefeed-mobile-bff/ugc/search/result`: UGC search queries.
+*   `/wefeed-mobile-bff/ugc/search/suggest`: UGC autocomplete search.
+*   `/wefeed-mobile-bff/ugc/trending/by-download`: Most downloaded UGC items.
+*   `/wefeed-mobile-bff/ugc/trending/by-hashtag`: UGC tagged content.
+*   `/wefeed-mobile-bff/ugc/trending/by-ugc-video`: Trending video feed.
+*   `/wefeed-mobile-bff/ugc/trending/channel`: UGC category channels.
+*   `/wefeed-mobile-bff/ugc/trending/filter-edu`: UGC educational filter.
+*   `/wefeed-mobile-bff/ugc/trending/home`: UGC main feed.
+*   `/wefeed-mobile-bff/ugc/trending/immersive`: Fullscreen vertical UGC feed.
+*   `/wefeed-mobile-bff/ugc/trending/subscribe`: Subscribed UGC creators.
+*   `/wefeed-mobile-bff/ugc/video/download`: Fetch UGC video files.
+*   `/wefeed-mobile-bff/ugc/video/first-by-subject`: Primary video file for subject.
+*   `/wefeed-mobile-bff/ugc/video/get`: UGC video metadata.
+*   `/wefeed-mobile-bff/ugc/video/list/by-my`: My uploaded UGC videos.
+*   `/wefeed-mobile-bff/ugc/video/list/by-user`: User UGC uploads.
+*   `/wefeed-mobile-bff/ugc-video/list/likes`: Liked UGC video collection.
+*   `/wefeed-mobile-bff/favorite/ugc-video/list`: Bookmarked UGC videos.
+*   `/wefeed-mobile-bff/favorite/ugc-video/toggle`: Favorite toggle logic.
+*   `/wefeed-mobile-bff/comment/ugc-video`: Comments on UGC clips.
+
+### **Shorts, Dubs & Reels System**
+*   `/wefeed-mobile-bff/shorts/dub-info`: Dub translations for shorts.
+*   `/wefeed-mobile-bff/shorts/favorite`: Favorite shorts.
+*   `/wefeed-mobile-bff/shorts/favorite-list`: List of saved short films.
+*   `/wefeed-mobile-bff/shorts/get-info`: Short series metadata.
+*   `/wefeed-mobile-bff/shorts/get-mini-captions`: Quick subtitles for shorts.
+*   `/wefeed-mobile-bff/shorts/mini-list`: Short video feeds collection.
+*   `/wefeed-mobile-bff/shorts/most-trending`: Trending shorts index.
+*   `/wefeed-mobile-bff/shorts/reel`: Video reel highlights.
+
+### **Social, Community & Group APIs (`/group/` / `/post/`)**
+*   `/wefeed-mobile-bff/group/list/community-entrance`: Group entrance layouts.
+*   `/wefeed-mobile-bff/group/list/my/v2`: Current user joined groups.
+*   `/wefeed-mobile-bff/group/list/subject`: Groups associated with specific films.
+*   `/wefeed-mobile-bff/group/list/user`: Groups belonging to a user.
+*   `/wefeed-mobile-bff/community/tab`: Community hub home config.
+*   `/wefeed-mobile-bff/community/trending-entrance`: Dynamic entries for buzzbox posts.
+*   `/wefeed-mobile-bff/post/count/subject`: Comments count for moments posts.
+*   `/wefeed-mobile-bff/post/create`: Write new post.
+*   `/wefeed-mobile-bff/post/delete`: Delete community post.
+*   `/wefeed-mobile-bff/post/explore`: Browse hot community topics.
+*   `/wefeed-mobile-bff/post/get`: Retrieve specific post.
+*   `/wefeed-mobile-bff/post/list-by-tab`: Filter posts by category tab.
+*   `/wefeed-mobile-bff/post/list-trending/group`: Trending posts in group.
+*   `/wefeed-mobile-bff/post/list/correlation`: Contextual posts matching content.
+*   `/wefeed-mobile-bff/post/list/group`: Posts in a particular group.
+*   `/wefeed-mobile-bff/post/list/immersive`: Fullscreen content view.
+*   `/wefeed-mobile-bff/post/list/immersive/v2`: V2 fullscreen feed.
+*   `/wefeed-mobile-bff/post/list/likes`: Posts liked by user.
+*   `/wefeed-mobile-bff/post/list/user`: User posts list.
+*   `/wefeed-mobile-bff/post/list/user/my`: My community posts.
+*   `/wefeed-mobile-bff/post/nearby`: Geolocated user posts feed.
+*   `/wefeed-mobile-bff/interactive/post/like`: Like/Unlike community post.
+
+### **In-App Messaging & Notifications (`/message/`)**
+*   `/wefeed-mobile-bff/message/internal/has-new`: Unread message flags.
+*   `/wefeed-mobile-bff/message/internal/list`: In-app notification center.
+*   `/wefeed-mobile-bff/message/notify-bar/v2`: V2 banner/toast notifications list.
+*   `/wefeed-mobile-bff/message/push/local/list`: Local client-triggered push schedules.
+*   `/wefeed-mobile-bff/message/report`: Read receipt reports.
+
+### **User Follow & Subscriptions (`/subscription/`)**
+*   `/wefeed-mobile-bff/subscription/feed`: Updates from subscribed creators/interests.
+*   `/wefeed-mobile-bff/subscription/stats`: Engagement stats of subscription.
+*   `/wefeed-mobile-bff/subscription/status`: Subscribed flag checker.
+*   `/wefeed-mobile-bff/subscription/subscription`: Creator subscribe action.
+*   `/wefeed-mobile-bff/subscription/v1/followings`: List of followed accounts.
+
+### **Check-In & Welfare Center Activities**
+*   `/wefeed-mobile-bff/activity/ad-dada-set-default`: Configure ad providers preferences.
+*   `/wefeed-mobile-bff/activity/ad-task-list`: Ad tasks available.
+*   `/wefeed-mobile-bff/activity/entrance`: Activities dashboard gateway.
+*   `/wefeed-mobile-bff/activity/fission/bind`: Bind referral code.
+*   `/wefeed-mobile-bff/activity/lottery/prize-redeem`: Confirm prize ticket code.
+*   `/wefeed-mobile-bff/activity/welfare-center`: Task hub landing page.
+
+### **General Feedback Systems**
+*   `/wefeed-mobile-bff/feedback/commit`: Submit user tickets.
+*   `/wefeed-mobile-bff/feedback/label/list`: Classification labels.
+*   `/wefeed-mobile-bff/feedback/report`: Report dynamic issues.
 
 ### **System & Operational APIs**
 *   `/wefeed-mobile-bff/category/list`: Browse by genre.
@@ -175,6 +365,23 @@ The following endpoints were extracted directly from the application's service m
 *   `/wefeed-mobile-bff/money/coin-log`: Virtual currency transaction history.
 *   `/wefeed-mobile-bff/money/sku-list/get`: Fetch available coin/VIP packages.
 *   `/wefeed-mobile-bff/money/exchange/order`: Finalize coin-to-VIP exchange.
+*   `/wefeed-mobile-bff/ad/config`: Static configuration for client-side ad placements.
+*   `/wefeed-mobile-bff/app/config`: Global application properties and overrides.
+*   `/wefeed-mobile-bff/sniff/config`: Configuration rules for external source streaming discovery.
+
+### **Auxiliary & Shared APIs**
+*   `/wefeed-mobile-bff/music/like`: Like audio track.
+*   `/wefeed-mobile-bff/music/like-list`: List of saved/liked audio.
+*   `/wefeed-mobile-bff/comment`: Add subject comment.
+*   `/wefeed-mobile-bff/comment/like`: Like subject comment.
+*   `/wefeed-mobile-bff/comment/list`: Fetch comments for content.
+*   `/wefeed-mobile-bff/comment/user/list`: List comments made by user.
+*   `/wefeed-mobile-bff/playlist/content`: Subject playlist list of titles.
+*   `/wefeed-mobile-bff/share/longurl`: Create web sharing links.
+*   `/wefeed-mobile-bff/share/shorturl`: Create short links.
+*   `/wefeed-mobile-bff/search-anaylze/seek`: Telemetry search query telemetry analysis.
+*   `/wefeed-mobile-bff/live/match-detail`: Live sports event matches information.
+*   `/wefeed-mobile-bff/live/sub-upcomming-match`: Subscribe to upcoming live sports event reminders.
 
 ### **VIP & Membership**
 *   `GET /wefeed-mobile-bff/vip/member/detail`: Check subscription status and expiry.
@@ -343,3 +550,177 @@ When the user selects a specific language (e.g., "Hindi dub"), the app does not 
 *   **Rendering**: Uses a specialized WebView with **WebGL/Canvas Hardware Acceleration** enabled.
 *   **Deep Link**: Internal banners use `oneroom://h5_game?url=<URL>&orientation=1`.
 *   **User Persistence**: The user's `session_id` is passed as a query parameter or cookie to the H5 game to enable leaderboards and cross-device score syncing.
+
+---
+
+## 14. UGC (User Generated Content) Video Platform
+
+The application hosts a secondary UGC short-video sharing platform backed by AliCloud OSS buckets.
+
+### **UGC Endpoints**
+*   **Play Short Video**: `GET /wefeed-mobile-bff/ugc/video/play` (resolves playback URL)
+*   **Multi-Video Resolution**: `GET /wefeed-mobile-bff/ugc/video/play-multi`
+*   **Like UGC Video**: `POST /wefeed-mobile-bff/interactive/ugc-video/like`
+*   **Upload Token**: `POST /wefeed-mobile-bff/upload/sts-token/v2`
+    *   *Returns*: Temporary AWS/AliCloud STS credentials (`AccessKeyId`, `SecretAccessKey`, `SessionToken`) to upload videos directly to the cloud CDN storage.
+*   **UGC Download Handshake**:
+    *   Initialize: `POST /wefeed-mobile-bff/ugc/video/start-download`
+    *   Complete: `POST /wefeed-mobile-bff/ugc/video/finish-download`
+*   **UGC Captions**: `GET /wefeed-mobile-bff/ugc/video/caption`
+
+---
+
+## 15. Third-Party Payment & Ad Mediation
+
+Payment orchestration and ad network services are directly compiled into the core app's networking bridge.
+
+### **Paynicorn Payment Gateway**
+*   **Host**: `https://api.paynicorn.com`
+*   **BFF Orders**:
+    *   Create order: `POST /wefeed-mobile-bff/money/paynicorn-trading-order/create`
+    *   Poll payment status: `GET /wefeed-mobile-bff/money/paynicorn-purchase-result/polling`
+*   **Google Play Billing**:
+    *   Create Play order: `POST /wefeed-mobile-bff/money/gp-trading-order/create`
+    *   Poll Play receipt: `GET /wefeed-mobile-bff/money/gp-purchase-result/polling`
+
+### **Ad Integration Gateways**
+*   **Pangle / TikTok Ad Service**:
+    *   Endpoints: `/api/ad/union/sdk/get_ads/`, `/api/ad/union/sdk/reward_video/reward/`, `/api/ad/union/sdk/settings/`
+    *   Host: `https://api16-access-sg.pangle.io`
+*   **Vungle Ad Network**:
+    *   Hosts: `https://adx.ads.vungle.com/api/ads`, `https://config.ads.vungle.com/`, `https://logs.ads.vungle.com/sdk/error_logs`
+*   **Hisavana Traffic Dispatch**:
+    *   Endpoints: `/hisavana/traffic-dispatch/v1/consumer-not-login/addispatch/query/getAdData`
+    *   Host: `https://api.test.hisavana.com`
+
+---
+
+## 16. Third-Party Subtitles (OpenSubtitles)
+
+For titles lacking official `.vtt`/`.srt` assets on `hakunaymatata.com`, the app queries OpenSubtitles API directly.
+
+*   **Subtitle Query**: `GET https://vip-api.opensubtitles.com/api/v1/subtitles?query=<title>`
+*   **Download Track**: `GET https://vip-api.opensubtitles.com/api/v1/download`
+
+---
+
+## 17. In-App Lottery & Promotion System
+
+The app utilizes gamified tasks and lotteries to drive user engagement and VIP registrations.
+
+*   **User Streaks**: `GET /wefeed-mobile-bff/activity/check-in-info`
+*   **Lottery Profile**: `GET /wefeed-mobile-bff/activity/lottery/user-info`
+*   **Lottery Streaks**: `GET /wefeed-mobile-bff/activity/lottery/user-activity-info`
+*   **Draw Lottery Ticket**: `POST /wefeed-mobile-bff/activity/lottery/draw`
+*   **Claim Prizes**: `POST /wefeed-mobile-bff/activity/lottery/prize-claim`
+*   **Redeem Code**: `POST /wefeed-mobile-bff/activity/lottery/draw-code-redeem`
+
+---
+
+## 18. Client Telemetry & Logs
+
+*   **Retrieve Logs Config**: `GET /wefeed-mobile-bff/client_logs_retrieve/config`
+*   **Bug Report Upload**: `POST /wefeed-mobile-bff/retrieve_client_logs/report`
+
+---
+
+## 19. App Update Service
+
+*   **Check Updates**: `GET /{appPath}/app/check-update`
+
+---
+
+## 20. Short Dramas & TV Vertical BFF (`wefeed-fm-bff`)
+
+The Short TV vertical uses a separate bff service domain path pattern:
+*   **Fetch Shorts Playlist Content**: `GET /wefeed-fm-bff/shorts/playlist/content`
+*   **Filter Shorts Subjects**: `GET /wefeed-fm-bff/shorts/subject/filter-items`
+*   **List Shorts Series**: `GET /wefeed-fm-bff/shorts/subject/list`
+*   **Shorts Captions**: `GET /wefeed-short-bff/shorts/get-mini-captions`
+
+---
+
+## 21. Deep Link Routing Protocols (`oneroom://`)
+
+The application responds to intent schemas starting with `oneroom://`.
+
+### **Supported Scheme Actions**
+*   **Webview Bridge**: `oneroom://webview?url=<Url>` (opens in-app customized browser).
+*   **Subject/Movie Detail**: `oneroom://com.community.oneroom?type=/movie/detail&id=<SubjectId>` (launches catalog detail screen).
+*   **Activity Detail**: `oneroom://com.community.oneroom?type=/ab/detail&id=<ActivityId>&channel=push`
+*   **Game Center**: `oneroom://com.community.oneroom?type=/commercial/gamecenter`
+*   **Points / Rewards Dashboard**: `oneroom://member/adtask` or `oneroom://com.community.oneroom?type=/download/panel_activity`
+*   **Tab Navigation Override**:
+    *   Home Tab: `oneroom://com.community.oneroom?type=/main/tab&bottomTab=home`
+    *   Top Tab Target: `oneroom://com.community.oneroom?type=/main/tab&bottomTab=home&topTab=<TabName>`
+    *   Index Selection: `oneroom://com.community.oneroom?type=/main/tab&tabIndex=0`
+*   **Search Overlay Launcher**: `oneroom://com.community.oneroom?type=/search/activity/search_manager&type=3`
+
+---
+
+## 22. BuzzBox Group Orchestration APIs (Complete Mapping)
+
+*   **Create Group**: `POST /wefeed-mobile-bff/group/create`
+*   **Check Group Existence**: `GET /wefeed-mobile-bff/group/exist`
+*   **Get Group Details**: `GET /wefeed-mobile-bff/group/get`
+*   **Join Group Session**: `POST /wefeed-mobile-bff/group/join`
+*   **Leave Group Session**: `POST /wefeed-mobile-bff/group/leave`
+*   **Get Nearby Active Groups**: `GET /wefeed-mobile-bff/group/list/nearby`
+*   **Search Group Directory**: `GET /wefeed-mobile-bff/group/list/search`
+*   **Get Group Categories**: `GET /wefeed-mobile-bff/group/list/class`
+*   **Global Group Rankings**: `GET /wefeed-mobile-bff/group/rank`
+*   **Update Group Metadata**: `POST /wefeed-mobile-bff/group/update`
+*   **Report Group Visit**: `POST /wefeed-mobile-bff/group/visit`
+
+---
+
+## 23. Local P2P Wi-Fi Media Transfer System
+
+Used to share downloaded movies offline between nearby devices running the native player client.
+
+*   **P2P Transfer Actions**:
+    *   Host Server Initialization: `POST /client/notifyServerCreate`
+    *   File Payload Transfer handshake: `GET /client/fetchFile` (or `fetchFile?file=`)
+    *   Transfer Session Completion: `POST /client/notifyServerSendComplete`
+    *   Queue Status List: `GET /client/getTransferFilesList`
+    *   Transfer Task Finished: `POST /client/notifyFileTaskFinish`
+    *   Task Error Notification: `POST /client/notifyFileTaskError`
+    *   Client Closed Signal: `POST /client/notifyClientClose`
+*   **Wi-Fi P2P Socket Setup**:
+    *   Create Network Socket: `POST /transfer/wifi_create`
+    *   Connect to Socket: `POST /transfer/wifi_connect`
+    *   Sync Status: `GET /transfer/status`
+
+---
+
+## 24. E-Learning & Course Platform APIs
+
+Endpoints managing the educational section vertical and playlists:
+*   **Add Educational Course**: `POST /wefeed-mobile-bff/learning/add-course`
+*   **My Enrolled Courses**: `GET /wefeed-mobile-bff/learning/my-course`
+*   **Category Filter Options**: `GET /wefeed-mobile-bff/learning/prefer-options`
+*   **Save Learning Preferences**: `POST /wefeed-mobile-bff/learning/submit-prefer`
+*   **List Courses**: `GET /edu/courseList`
+*   **Course Watch History**: `GET /edu/history`
+
+---
+
+## 25. Auxiliary SDK & Integration Hosts
+
+These hosts support underlying monetization, analytics, and dynamic configuration setups:
+*   **Configuration & Ads Dispatch**: `https://api.eagllwin.com` (and `https://api.test.eagllwin.com`)
+*   **Mini-App Platform CDN**: `https://api.byte-app.com` (and `https://api-static.byte-app.com`)
+*   **Auth Support Handshake**: `https://api.sunnbird.com`
+*   **Telemetry Analytics Upload**: `https://api16-access-ttp.tiktokpangle.us`
+*   **Dynamic Asset Repositories**: `https://app-oss.byte-app.com`
+    *   *Smali Class*: `Lcom/transsion/api/gateway/config/b;` (Gateway dynamic configurations setup)
+*   **MiniApp European Edge CDN**: `https://transsion-miniapp-android-cdn.oss-eu-central-1.aliyuncs.com`
+*   **Transsion OneID user tracking/identity platform**: `https://ire-oneid.shalltry.com`
+    *   *Smali Class*: `Lcom/transsion/base/infras_config/a;` (Infrastructure configuration init)
+*   **Web Search & Video Downloader Service**: `https://m.mvbrowse.com`
+    *   *Smali Class*: `Lcom/transsion/lib_web/download_render/data/config/ConfigData;`
+*   **Game Center Integration BFF**: `https://api.ahagamecenter.com/bff/game.moviebox` (and `https://tapi.ahagamecenter.com`)
+    *   *Smali Class*: `Lcom/transsion/mb/config/manager/ConfigBean;`
+
+
+
