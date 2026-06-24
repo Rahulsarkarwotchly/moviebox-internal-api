@@ -792,6 +792,29 @@ Entering the correct password also unlocks access to `com.transsion.usercenter.l
 *   Selecting any country from the RecyclerView updates the local MMKV configurations (`sp_code`, `custom_local_iso`, `custom_local_country`, `custom_country_code`) to simulate the corresponding mobile network carrier (e.g., setting `sp_code` to `"310"` to mimic a US SIM).
 *   During subsequently initiated API handshakes, the client retrieves these MMKV values to populate header fields such as `X-Client-Info`, bypassing the server-side geofencing and emulator validation controls.
 
+### **VI. Verified Network Behaviors (HAR Analysis)**
+Network trace audits verify the following API behaviors during lockout and bypassed states:
+*   **Target Domains:**
+    *   API Endpoint: `https://api.inmoviebox.com` (falls back to `https://apii.inmoviebox.com`)
+    *   Graphic Assets: `https://pbcdn.aoneroom.com`
+    *   Media CDN Streams: `https://macdn.hakunaymatata.com`
+    *   Subtitles CDN: `https://cacdn.hakunaymatata.com`
+*   **Lockout Response Payload (HTTP 403):**
+    Outgoing queries containing standard carrier configurations or generic virtual device models (e.g., `"model":"sdk_gphone_x86_64"`, `"sp_code":"310260"`) are blocked by the API Gateway with:
+    ```json
+    {
+      "code": 403,
+      "reason": "FORBIDDEN",
+      "message": "Service not available in current region"
+    }
+    ```
+*   **Bypassed Response (HTTP 200):**
+    When the custom test MCC (`"sp_code":"90101"`) is applied to the headers, the endpoints return status `200 OK` allowing standard operations:
+    *   `/wefeed-mobile-bff/vip/member/rights-check` returns `{"isPassed":true, "vipEnable":true}`.
+    *   `/wefeed-mobile-bff/subject-api/season-info` successfully resolves the episode listings.
+    *   `/wefeed-mobile-bff/subject-api/resource` returns the raw CDN URLs.
+
+
 
 
 
