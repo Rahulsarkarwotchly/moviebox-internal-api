@@ -170,6 +170,8 @@ Discovered endpoints that manage secondary application logic:
 ### **Tab & Layout**
 *   `GET /wefeed-mobile-bff/tab-api/all`: Fetches the dynamic tab structure for the home screen.
 *   `GET /wefeed-mobile-bff/tab-operating`: Fetches layout promotions and banners.
+*   `GET /wefeed-mobile-bff/activity/embedded-h5-list/v2`: Lists dynamic layout templates and embedded H5 applications/promotional pages.
+*   **Static Resource Configurations**: `https://infra-static.aoneroom.com/embedding/[yyyy]/[mm]/[dd]/[md5].json` (Hosts structural configuration parameters for components/regions).
 
 ### **Account & Security**
 *   `GET /wefeed-mobile-bff/user-api/info`: Fetches detailed user profile/plan data.
@@ -481,9 +483,9 @@ The "Live" section (internally referred to as `BuzzBox` or `RoomSystem`) enables
 MovieBox aggregates third-party live content (Live Sports, Events) using a specialized **WebView Bridge**.
 
 ### **Live Sports Aggregators**
-*   **Primary Partner**: `sportslivetoday.com`
+*   **Partners**: `sportslivetoday.com`, `sportsnow.top`
 *   **Integration Method**: Custom Internal WebView.
-*   **Usage**: Surfaced via Top-level banners for major events (Cricket, Football).
+*   **Usage**: Surfaced via Top-level banners for major events (Cricket, Football, e.g. FIFA World Cup).
 
 ### **WebView Protocol**
 When an external sports link is triggered, the app employs the following security/bypass protocol:
