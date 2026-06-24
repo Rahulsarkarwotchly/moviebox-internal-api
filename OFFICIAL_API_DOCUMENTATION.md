@@ -848,6 +848,39 @@ Developers and testers can bypass these restrictions using the built-in laborato
     ```
     Repackaging the app with `android:debuggable="true"` in the `AndroidManifest.xml` forces Android to trust user store CA certificates (like Burp CA) and allows decrypters to capture the TLS traffic.
 
+---
+
+## 28. Embedded H5 & Offline Caching (Instant Loading & Bundle Integrity)
+
+To optimize load times and ensure offline usability for interactive components (such as Game Center H5 mini-games or Welfare Center reward tasks), the application implements a pre-fetching and caching architecture.
+
+### I. Caching Manifest Format
+The pre-fetch engine queries CDN configurations containing bundle descriptions in the following format:
+*   **Endpoint Path:** `https://infra-static.aoneroom.com/embedding/[yyyy]/[mm]/[dd]/[md5].json`
+*   **JSON Structure:**
+    ```json
+    {
+      "files": [
+        "https://infra-static.aoneroom.com/games/cricket/index.html",
+        "https://infra-static.aoneroom.com/games/cricket/main.js"
+      ],
+      "filteredResources": [
+        { "url": "https://ezjobsbangla.com/favicon.ico", "type": "other" }
+      ],
+      "bundleHash": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "failedResources": []
+    }
+    ```
+
+### II. Dynamic Discovery & Manifest Loading
+1.  **H5 Targets List:** The client requests `/wefeed-mobile-bff/activity/embedded-h5-list/v2` to receive active H5 applications and campaigns.
+2.  **Manifest Fetching:** For each target, the background download worker retrieves its corresponding manifest file from the CDN.
+3.  **Local Storage Caching:**
+    *   Assets specified in `files` are downloaded and stored locally in `/offline_cache` or `/net_cache`.
+    *   The worker computes the checksum of the package and verifies it against the `bundleHash` to prevent MITM tampering or corrupted file runs.
+4.  **Zero-Latency Native Execution:** When the user triggers an H5 deep-link (e.g., `oneroom://h5_game?url=...`), the WebView interceptor redirects network requests for the assets to the local cache directory, loading the page instantly even when offline.
+
+
 
 
 
