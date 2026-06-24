@@ -50,4 +50,7 @@ app-jadx-gui/
 /search_*.py
 /dump_*.py
 /scoop
-/test_fastapi.out
+/test_fastapi.out
+/settings.gradle
+/example.py
+/build.gradle
