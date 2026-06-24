@@ -805,6 +805,48 @@ Network trace audits verify the following API behaviors during bypassed states:
     *   `/wefeed-mobile-bff/subject-api/season-info` successfully resolves the episode listings.
     *   `/wefeed-mobile-bff/subject-api/resource` returns the raw CDN URLs.
 
+---
+
+## 27. HTTPS Proxy & SSL Pinning Bypass Mechanics
+
+To prevent sniffing, debugging, or tampering with API requests via tools like Burp Suite or Charles Proxy, the application implements environment checks at the OkHttp and XML configuration levels.
+
+### **I. Proxy Restrictions & Decryption Protection**
+By default in production builds, the app prevents standard proxy interception:
+1.  **Forced direct Connection (`Proxy.NO_PROXY`):**
+    During client building in `kg.c`, unless the debug proxy state is toggled, the app sets:
+    ```java
+    clientBuilder.proxy(Proxy.NO_PROXY);
+    ```
+    This completely ignores system Wi-Fi proxy settings and global ADB proxies, forcing direct TCP connections.
+2.  **System-Only trust anchors (`network_security_config.xml`):**
+    The app configures `<certificates src="system" />` as the only trusted anchor for `aoneroom.com` domains. Outgoing requests routed through a user CA certificate (e.g., Burp Suite's CA) fail with `SSLHandshakeException`.
+
+### **II. Developer Proxy Bypass Mechanics**
+Developers and testers can bypass these restrictions using the built-in laboratory:
+1.  **Host Mocking Dialog (`LabHttpHostDialog`):**
+    Unlocking the lab allows access to the host settings dialog. Entering a domain or IP (such as a Burp Suite listener) writes the value to MMKV key **`mock_host_key`**.
+2.  **URL Overwrite Engine (`CacheIpPool`):**
+    During request formulation, the resolution pool checks for the presence of the mock key:
+    ```java
+    String mockHost = mmkv.getString("mock_host_key", "");
+    if (!TextUtils.isEmpty(mockHost)) {
+        CacheIpPool.e = mockHost;
+    }
+    ```
+    All subsequent API calls are rewritten dynamically as `https://[mockHost]/[path]` to redirect traffic to the debug listener.
+3.  **Debug CA trust anchor:**
+    The network configuration contains a debug override directive:
+    ```xml
+    <debug-overrides>
+        <trust-anchors>
+            <certificates overridePins="true" src="user" />
+        </trust-anchors>
+    </debug-overrides>
+    ```
+    Repackaging the app with `android:debuggable="true"` in the `AndroidManifest.xml` forces Android to trust user store CA certificates (like Burp CA) and allows decrypters to capture the TLS traffic.
+
+
 
 
 
