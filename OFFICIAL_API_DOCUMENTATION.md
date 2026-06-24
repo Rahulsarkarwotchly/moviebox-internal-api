@@ -761,15 +761,37 @@ When the application identifies that it is running inside an emulator or virtual
     System.exit(0);
     ```
 
-### **V. Developer Bypass Easter Egg**
-Tapping the `"Not Available"` text on the lockout screen **10 times** opens a secret password dialog (`LabPwdDialog`). Inputting the correct testing password writes `sp_code: "90101"` to the local **MMKV** storage:
+### **V. Developer Bypass Easter Egg & Laboratory Settings**
+Tapping the `"Not Available"` text on the lockout screen **10 times** opens a secret password verification dialog (`LabPwdDialog`).
+
+#### **1. Password Cryptographic Verification**
+The dialog implements verification using a hardcoded MD5 target hash and salt:
+*   **Salt:** `-321`
+*   **Target MD5:** `031A68C3912D796E235A72EE0BF89C16`
+
+The validation logic calculates:
+```java
+MD5(userInput.toLowerCase() + SALT) == TARGET_MD5
+```
+Decryption of the hash resolves the salted input to `"moviebox-321"`. Consequently, the raw developer bypass password is **`moviebox`**.
+
+#### **2. Local Sandbox Override variables (MMKV)**
+Once the password is correct, the application bypasses regional and emulator verification by writing custom carrier variables directly into local **MMKV** key-value storage:
 ```java
 MMKV mmkvC = mg.a.f66344a.c();
 if (mmkvC != null) {
-    mmkvC.putString("sp_code", "90101").commit();
+    mmkvC.putString("sp_code", "90101").commit(); // Custom Test MCC
+    mmkvC.putString("custom_local_iso", "us").commit(); // Country ISO
+    mmkvC.putString("custom_local_country", "United States").commit();
+    mmkvC.putString("custom_country_code", "1").commit();
 }
 ```
-Upon restarting, the app overrides all regional/carrier blocks, bypassing environment checks.
+
+#### **3. Regional Carrier Simulation (`MccActivity`)**
+Entering the correct password also unlocks access to `com.transsion.usercenter.laboratory.MccActivity`. This activity allows testers to override carrier/region parameters manually:
+*   Selecting any country from the RecyclerView updates the local MMKV configurations (`sp_code`, `custom_local_iso`, `custom_local_country`, `custom_country_code`) to simulate the corresponding mobile network carrier (e.g., setting `sp_code` to `"310"` to mimic a US SIM).
+*   During subsequently initiated API handshakes, the client retrieves these MMKV values to populate header fields such as `X-Client-Info`, bypassing the server-side geofencing and emulator validation controls.
+
 
 
 
