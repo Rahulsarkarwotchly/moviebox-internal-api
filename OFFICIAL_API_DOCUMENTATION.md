@@ -773,7 +773,7 @@ The validation logic calculates:
 ```java
 MD5(userInput.toLowerCase() + SALT) == TARGET_MD5
 ```
-Decryption of the hash resolves the salted input to `"moviebox-321"`. Consequently, the raw developer bypass password is **`moviebox`**.
+Decryption of the hash resolves the salted input to `"or666-321"`. Consequently, the raw developer bypass password is **`or666`**.
 
 #### **2. Local Sandbox Override variables (MMKV)**
 Once the password is correct, the application bypasses regional and emulator verification by writing custom carrier variables directly into local **MMKV** key-value storage:
