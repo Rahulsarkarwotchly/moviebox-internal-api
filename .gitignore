@@ -28,3 +28,26 @@ out/
 # OS files
 .DS_Store
 Thumbs.db
+
+# APK files and decompilations
+*.apk
+*.apk.jadx
+*.jadx
+moviebox_decoded-apktool/
+app-jadx-gui/
+
+# Testing & Temp files in root
+/*.json
+/test_*.py
+/check_*.py
+/debug_*.py
+/diagnose_*.py
+/explore_*.py
+/extract_*.py
+/inspect_*.py
+/list_*.py
+/scan_*.py
+/search_*.py
+/dump_*.py
+/scoop
+/test_fastapi.out
