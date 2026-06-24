@@ -722,5 +722,56 @@ These hosts support underlying monetization, analytics, and dynamic configuratio
 *   **Game Center Integration BFF**: `https://api.ahagamecenter.com/bff/game.moviebox` (and `https://tapi.ahagamecenter.com`)
     *   *Smali Class*: `Lcom/transsion/mb/config/manager/ConfigBean;`
 
+---
+
+## 26. Emulator & Sandbox Detection Mechanics
+
+To protect request endpoints and restrict usage to official physical devices, the application implements multi-layered environment checks.
+
+### **I. QEMU and Hypervisor File Probing**
+The application scans for virtual hardware signatures and standard debug layers inside the Android system directories:
+*   **Daemon Port check:** `/dev/socket/qemud` (Checks for the QEMU messaging socket).
+*   **Virtual Malloc Debug Library:** `/system/lib/libc_malloc_debug_qemu.so` (Flags the presence of emulator-specific memory allocation trackers).
+*   **CPU Information Probes:** Parses `/proc/cpuinfo` and `/sys/devices/system/cpu/` to identify generic x86 architectures or hypervisor details.
+
+### **II. Device Property & Hardware Analysis (`com.transsion.athena`)**
+The telemetry engine (`com.transsion.athena.taaneh.athena`) validates physical parameters:
+*   **Serial Number Verification:** Queries `Build.getSerial()` (or `Build.SERIAL` on API < 26) and falls back to reflection:
+    ```java
+    Class<?> cls = Class.forName("android.os.SystemProperties");
+    String serial = (String) cls.getMethod("get", String.class).invoke(cls, "ro.serialno");
+    ```
+    If `ro.serialno` is null, empty, or equals `"unknown"`, it triggers sandbox warnings.
+*   **Network Provider Verification:** Queries `telephonyManager.getSimOperator()` and active cell towers (`getAllCellInfo()`). The absence of real base station identity flags an emulated environment.
+
+### **III. root Status Checks**
+Since most developer emulators are rooted, the app searches for active superuser binary paths:
+*   `/data/local/su`
+*   `/system/bin/su`
+*   `/system/xbin/su`
+*   `/system/app/Superuser.apk`
+
+### **IV. Consequences of Sandbox/Emulator Detection**
+When the application identifies that it is running inside an emulator or virtual container, it enforces a locking sequence:
+1.  **Request Signature Invalidation:** Standard telemetry and API requests fail validation at the remote API Gateway (`api6.aoneroom.com`) because the system properties and carrier variables compiled in headers do not match realistic physical devices.
+2.  **Redirection to `NotAvailableActivity`:** On launch or playback request failure, the app routes the user to `com.transsion.subroom.activity.NotAvailableActivity` displaying a geofence error (`"Not Available in current region"`).
+3.  **Application Process Termination:** A background coroutine (`NotAvailableActivity$welcomeMovieBox$1`) is invoked, sleeping for 2 seconds before executing:
+    ```java
+    Process.killProcess(Process.myPid());
+    System.exit(0);
+    ```
+
+### **V. Developer Bypass Easter Egg**
+Tapping the `"Not Available"` text on the lockout screen **10 times** opens a secret password dialog (`LabPwdDialog`). Inputting the correct testing password writes `sp_code: "90101"` to the local **MMKV** storage:
+```java
+MMKV mmkvC = mg.a.f66344a.c();
+if (mmkvC != null) {
+    mmkvC.putString("sp_code", "90101").commit();
+}
+```
+Upon restarting, the app overrides all regional/carrier blocks, bypassing environment checks.
+
+
+
 
 
