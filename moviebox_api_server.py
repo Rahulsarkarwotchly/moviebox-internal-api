@@ -15,6 +15,7 @@ import uuid
 import re
 from urllib.parse import quote
 from moviebox_api import MovieBoxClient, MovieBoxAuth, MovieBoxContent, MovieBoxStream, MovieBoxUser
+from moviebox_api.auth import DEFAULT_GUEST_TOKEN
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -689,14 +690,19 @@ def get_detail(subject_id: str, depth: int = 0, session_id: Optional[str] = Cook
     if not data: return {"code": 1, "msg": "Not found"}
     
     # Logic to force status sync: Check the actual list if cloud detail is stale
-    try:
-        wl_res = s["user"].get_watchlist(page=1, per_page=50) # Check first page of favorites
-        wl_items = wl_res.get("data", {}).get("items") or wl_res.get("data", {}).get("list") or []
-        for item in wl_items:
-            if str(item.get("subject_id") or item.get("id") or item.get("subjectId")) == str(subject_id):
-                data["isFavorite"] = 1 # Force it
-                break
-    except: pass
+    is_fav = False
+    if s["auth"].token != DEFAULT_GUEST_TOKEN:
+        try:
+            wl_res = s["user"].get_watchlist(page=1, per_page=50) # Check first page of favorites
+            wl_items = wl_res.get("data", {}).get("items") or wl_res.get("data", {}).get("list") or []
+            for item in wl_items:
+                if str(item.get("subject_id") or item.get("id") or item.get("subjectId")) == str(subject_id):
+                    is_fav = True
+                    break
+        except: pass
+
+    if is_fav:
+        data["isFavorite"] = 1 # Force it
 
     # Existing field cross-check
     status_fields = ["isFavorite", "is_favorite", "fav", "is_fav", "collected", "isLike", "wantToSee", "likeStatus"]
@@ -1191,22 +1197,6 @@ def get_stream(subject_id: str, season: int = 1, episode: int = 1, quality: Opti
 
 import os
 
-def load_local_history():
-    try:
-        import json
-        if os.path.exists("local_history.json"):
-            with open("local_history.json", "r") as f:
-                return json.load(f)
-    except: pass
-    return {}
-
-def save_local_history(data):
-    try:
-        import json
-        with open("local_history.json", "w") as f:
-            json.dump(data, f)
-    except: pass
-
 @app.get("/download/{subject_id}")
 async def proxy_download(
     request: Request,
@@ -1386,24 +1376,25 @@ def get_history(page: int = 1, session_id: Optional[str] = Cookie(None)):
     combined_history_dict = {str(x.get("subjectId") or x.get("id")): x for x in default_history + user_specific}
     user_history = list(combined_history_dict.values())
     
-    try:
-        res = s["user"].get_history(page=page)
-        data = res.get("data", {})
-        if not isinstance(data, dict): data = {}
-        cloud_list = data.get("items") or data.get("list") or []
-        
-        seen_ids = set(combined_history_dict.keys())
-        for c in cloud_list:
-            sid_str = str(c.get("subjectId"))
-            # CRITICAL FIX: Only add from cloud if NOT in our local blacklist
-            if sid_str not in seen_ids and sid_str not in blacklist:
-                mapped = map_item(c)
-                mapped["seeTime"] = c.get("seeTime") or c.get("updateTime") or c.get("progress") or 0
-                mapped["subjectId"] = c.get("subjectId")
-                mapped["id"] = c.get("subjectId")
-                user_history.append(mapped)
-    except Exception as e:
-        pass
+    if s["auth"].token != DEFAULT_GUEST_TOKEN:
+        try:
+            res = s["user"].get_history(page=page)
+            data = res.get("data", {})
+            if not isinstance(data, dict): data = {}
+            cloud_list = data.get("items") or data.get("list") or []
+            
+            seen_ids = set(combined_history_dict.keys())
+            for c in cloud_list:
+                sid_str = str(c.get("subjectId"))
+                # CRITICAL FIX: Only add from cloud if NOT in our local blacklist
+                if sid_str not in seen_ids and sid_str not in blacklist:
+                    mapped = map_item(c)
+                    mapped["seeTime"] = c.get("seeTime") or c.get("updateTime") or c.get("progress") or 0
+                    mapped["subjectId"] = c.get("subjectId")
+                    mapped["id"] = c.get("subjectId")
+                    user_history.append(mapped)
+        except Exception as e:
+            pass
         
     user_history = [x for x in user_history if x.get("subjectId") and str(x.get("subjectId")) != "None"]
     # AND filter out anything in blacklist again to be 100% sure
@@ -1418,6 +1409,8 @@ def get_history(page: int = 1, session_id: Optional[str] = Cookie(None)):
 @app.get("/watchlist")
 def get_watchlist(page: int = 1, session_id: Optional[str] = Cookie(None)):
     s = get_session(session_id)
+    if s["auth"].token == DEFAULT_GUEST_TOKEN:
+        return {"code": 0, "data": {"list": []}}
     try:
         res = s["user"].get_watchlist(page=page)
         data = res.get("data", {})
@@ -1430,25 +1423,8 @@ def get_watchlist(page: int = 1, session_id: Optional[str] = Cookie(None)):
 @app.post("/history/delete/{subject_id}")
 def delete_history_item(subject_id: str, session_id: Optional[str] = Cookie(None)):
     s = get_session(session_id)
-    # Clear local history
-    h = load_local_history()
-    
-    # 1. Update Blacklist (Tombstone) to prevent cloud re-sync
-    if "blacklist" not in h: h["blacklist"] = []
-    if str(subject_id) not in h["blacklist"]:
-        h["blacklist"].append(str(subject_id))
-
-    # 2. Cleanup existing occurrences
-    if "default" in h:
-        h["default"] = [x for x in h["default"] if str(x.get("subjectId")) != str(subject_id)]
-        
-    s_id = session_id or "default"
-    if s_id in h and s_id != "default":
-        h[s_id] = [x for x in h[s_id] if str(x.get("subjectId")) != str(subject_id)]
-        
-    save_local_history(h)
-    
-    # 3. Attempt cloud clear
+    if s["auth"].token == DEFAULT_GUEST_TOKEN:
+        raise HTTPException(status_code=401, detail="Please Sign In to manage your history.")
     res = s["user"].report_history(subject_id, 0, 0, status=0) 
     return {"status": "success", "raw": res}
 
@@ -1456,6 +1432,8 @@ def delete_history_item(subject_id: str, session_id: Optional[str] = Cookie(None
 @app.post("/watchlist/toggle")
 def toggle_watchlist(subject_id: str, active: bool, subject_type: int = 1, session_id: Optional[str] = Cookie(None)):
     s = get_session(session_id)
+    if s["auth"].token == DEFAULT_GUEST_TOKEN:
+        raise HTTPException(status_code=401, detail="Please Sign In to manage your watchlist.")
     action = 1 if active else 0
     res = s["user"].toggle_watchlist(subject_id, action=action, subject_type=subject_type)
     return {"status": "success", "raw": res}
@@ -1469,6 +1447,8 @@ class ProgressReport(BaseModel):
 @app.post("/history/progress")
 def report_progress(req: ProgressReport, session_id: Optional[str] = Cookie(None)):
     s = get_session(session_id)
+    if s["auth"].token == DEFAULT_GUEST_TOKEN:
+        return {"status": "success"}
     return s["user"].report_history(req.subject_id, req.progress_ms, req.total_ms, req.status)
 
 @app.post("/launch-player")
@@ -1476,41 +1456,15 @@ def launch_player(player: str, url: str, cookie: Optional[str] = None, subject_i
     s = get_session(session_id)
     # Record History!
     if subject_id:
-        try:
-            s["client"].request('POST', '/wefeed-mobile-bff/subject-api/have-seen', data={'subjectId': subject_id})
-        except: pass
-
-        # 1. Update our Local Storage so Continue Watching yields instant responses
-        h = load_local_history()
-        s_id = session_id or "default"
-        if s_id not in h: h[s_id] = []
-        
-        # CLEAR FROM BLACKLIST if re-watching
-        if "blacklist" in h:
-            h["blacklist"] = [x for x in h["blacklist"] if str(x) != str(subject_id)]
-
-        h[s_id] = [x for x in h[s_id] if x.get("subjectId") != subject_id]
-
-        
-        h[s_id].insert(0, {
-            "subjectId": subject_id,
-            "id": subject_id,
-            "title": title or "Unknown",
-            "cover": cover or "",
-            "poster": cover or "",
-            "subjectType": 2 if season and episode else 1,
-            "season": season,
-            "episode": episode,
-            "seeTime": int(start_time) * 1000 
-        })
-        save_local_history(h)
-        
-        # 2. Sync to Official MovieBox Servers
-        try:
-            # Report progress starting point to continue watching
-            s["user"].report_history(subject_id, int(start_time) * 1000, 6000000, status=1)
-        except Exception as e:
-            print("History sync failed:", e)
+        if s["auth"].token != DEFAULT_GUEST_TOKEN:
+            try:
+                s["client"].request('POST', '/wefeed-mobile-bff/subject-api/have-seen', data={'subjectId': subject_id})
+            except: pass
+            try:
+                # Report progress starting point to continue watching
+                s["user"].report_history(subject_id, int(start_time) * 1000, 6000000, status=1)
+            except Exception as e:
+                print("History sync failed:", e)
 
     import subprocess
     

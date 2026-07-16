@@ -81,7 +81,7 @@ const VideoPlayer = memo(({
       playsInline: true,
       theme: '#E11D48',
       poster: poster,
-      videoAttributes: { crossOrigin: 'anonymous' },
+      moreVideoAttr: { crossOrigin: 'anonymous' },
       subtitle: {
         url: subtitleUrl || '',
         type: 'vtt',

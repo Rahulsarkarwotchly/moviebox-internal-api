@@ -74,16 +74,7 @@ export default function WatchPage() {
      try {
         const res = await movieApi.getSubtitles(id as string, season, episode);
         const list1 = (res.data?.list || []).map(normalizeSubtitle);
-        
-        try {
-            const extRes = await movieApi.getExtCaptions(id as string, season, episode);
-            const list2 = (extRes.data?.list || []).map(normalizeSubtitle);
-            const combined = [...list1, ...list2];
-            const unique = Array.from(new Map(combined.map(s => [s.sid, s])).values());
-            setSubtitles(unique);
-        } catch(e) {
-            setSubtitles(list1);
-        }
+        setSubtitles(list1);
      } catch (e) {}
   };
 
