@@ -32,7 +32,9 @@ class MovieBoxClient:
         headers = {
             "User-Agent": "MovieBoxPro/16.2.1 (Android 14; com.community.mbox.in)",
             "Accept": "application/json",
-            "X-Sign-Version": "2.0"
+            "X-Sign-Version": "2.0",
+            "X-M-Version": "16.2.1",
+            "Referer": f"{self.BASE_URL}/",
         }
         # These IDs are extracted from official AndroidManifest
         headers["appid"] = "302770f8bb6543ce8bdff585943a1eca"
@@ -265,9 +267,7 @@ class MovieBoxClient:
             except json.JSONDecodeError:
                 text = response.text
                 logger.error(f"Failed to decode JSON from {endpoint}. Status: {response.status_code}. Text: {text[:500]}")
-                if text.lower() == "ok":
-                    return {"code": 0, "msg": "ok", "data": {}}
-                return {"code": 1, "msg": f"Server Error: {text[:50]}", "data": {}}
+                return {"code": response.status_code or 1, "msg": f"Upstream returned non-JSON ({response.status_code}): {text[:200]}", "data": {}}
 
         except Exception as e:
             logger.error(f"Request exception: {e}")

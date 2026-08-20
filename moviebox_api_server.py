@@ -601,14 +601,18 @@ def search(q: str, page: int = 1, session_id: Optional[str] = Cookie(None)):
     s = get_session(session_id)
     try:
         res = s["content"].search(q, page=page)
-        data = res.get("data", {})
-        # Search API returns 'list' or 'items' depending on version/carrier
-        items = data.get("list") or data.get("items") or res.get("list") or res.get("items") or []
-        
+        data = res.get("data") if isinstance(res, dict) else {}
+        data = data if isinstance(data, dict) else {}
+        items = data.get("list") or data.get("items") or data.get("subjects") or res.get("list") or res.get("items") or []
+        if not items:
+            message = res.get("msg") or res.get("message") or "MovieBox returned no search results"
+            raise HTTPException(status_code=502, detail=message)
         return {"code": 0, "data": {"items": [map_item(i) for i in items]}}
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"Search failed for {q}: {e}")
-        return {"code": 0, "data": {"items": []}}
+        raise HTTPException(status_code=502, detail=f"MovieBox search failed: {e}")
 
 @app.get("/rooms/recommend")
 def get_rooms(page: int = 1, session_id: Optional[str] = Cookie(None)):

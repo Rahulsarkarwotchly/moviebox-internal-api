@@ -8,17 +8,17 @@ class MovieBoxContent:
     def get_home(self, page: int = 1, page_size: int = 20) -> Dict:
         """Fetches the home feed recommendation."""
         return self.client.request(
-            "POST",
-            "/subject-api/daily-movie-rec",
-            data={"page": page, "pageSize": page_size}
+            "GET",
+            "/wefeed-mobile-bff/subject-api/search",
+            params={"q": "", "page": page, "pageSize": page_size}
         )
 
     def search(self, keyword: str, page: int = 1, page_size: int = 20) -> Dict:
         """Searches for content based on keyword."""
         return self.client.request(
-            "POST",
-            "/subject-api/search",
-            data={"keyword": keyword, "page": page, "pageSize": page_size}
+            "GET",
+            "/wefeed-mobile-bff/subject-api/search",
+            params={"q": keyword, "page": page, "pageSize": page_size}
         )
 
     def get_movie_detail(self, subject_id: str) -> Dict:
