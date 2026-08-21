@@ -390,8 +390,8 @@ def get_trending(session_id: Optional[str] = Cookie(None)):
         items = data.get("list") or data.get("items") or []
         return {"code": 0, "data": [map_item(i) for i in items[:20]]}
     except Exception as e:
-        logger.error(f"Trending error: {e}")
-        return {"code": 1, "data": []}
+        logger.exception("Trending upstream error")
+        raise HTTPException(status_code=502, detail=f"MovieBox trending unavailable: {e}")
 
 @app.get("/movies")
 def get_movies(page: int = 1, session_id: Optional[str] = Cookie(None)):
@@ -402,8 +402,8 @@ def get_movies(page: int = 1, session_id: Optional[str] = Cookie(None)):
         items = data.get("list") or data.get("items") or data.get("subjects") or []
         return {"code": 0, "data": {"list": format_tab_sections(items)}}
     except Exception as e:
-        logger.error(f"Movies error: {e}")
-        return {"code": 1, "data": []}
+        logger.exception("Movies upstream error")
+        raise HTTPException(status_code=502, detail=f"MovieBox movies unavailable: {e}")
 
 def format_tab_sections(items: list):
     sections = []
@@ -607,8 +607,8 @@ def search(q: str, page: int = 1, session_id: Optional[str] = Cookie(None)):
         
         return {"code": 0, "data": {"items": [map_item(i) for i in items]}}
     except Exception as e:
-        logger.error(f"Search failed for {q}: {e}")
-        return {"code": 0, "data": {"items": []}}
+        logger.exception("Search upstream error for %s", q)
+        raise HTTPException(status_code=502, detail=f"MovieBox search unavailable: {e}")
 
 @app.get("/rooms/recommend")
 def get_rooms(page: int = 1, session_id: Optional[str] = Cookie(None)):
