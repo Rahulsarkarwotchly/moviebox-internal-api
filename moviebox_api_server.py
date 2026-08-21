@@ -413,8 +413,8 @@ def get_trending(response: Response, session_id: Optional[str] = Cookie(None)):
         items = _extract_items(res)
         return {"code": 0, "data": [map_item(i) for i in items[:40] if isinstance(i, dict)]}
     except Exception as e:
-        logger.exception("Trending error")
-        return {"code": 1, "message": str(e), "data": []}
+        logger.exception("Trending upstream error")
+        raise HTTPException(status_code=502, detail=f"MovieBox trending unavailable: {e}")
 
 @app.get("/movies")
 def get_movies(page: int = 1, session_id: Optional[str] = Cookie(None)):
@@ -425,8 +425,8 @@ def get_movies(page: int = 1, session_id: Optional[str] = Cookie(None)):
         items = data.get("list") or data.get("items") or data.get("subjects") or []
         return {"code": 0, "data": {"list": format_tab_sections(items)}}
     except Exception as e:
-        logger.error(f"Movies error: {e}")
-        return {"code": 1, "data": []}
+        logger.exception("Movies upstream error")
+        raise HTTPException(status_code=502, detail=f"MovieBox movies unavailable: {e}")
 
 def format_tab_sections(items: list):
     sections = []
@@ -631,8 +631,8 @@ def search(response: Response, q: str, page: int = 1, session_id: Optional[str] 
         items = _extract_items(res)
         return {"code": 0, "data": {"items": [map_item(i) for i in items[:40] if isinstance(i, dict)]}}
     except Exception as e:
-        logger.exception(f"Search failed for {q}")
-        return {"code": 1, "message": str(e), "data": {"items": []}}
+        logger.exception("Search upstream error for %s", q)
+        raise HTTPException(status_code=502, detail=f"MovieBox search unavailable: {e}")
 
 @app.get("/rooms/recommend")
 def get_rooms(page: int = 1, session_id: Optional[str] = Cookie(None)):
