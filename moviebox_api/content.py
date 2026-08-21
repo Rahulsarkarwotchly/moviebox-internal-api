@@ -17,7 +17,7 @@ class MovieBoxContent:
         """Searches for content based on keyword."""
         return self.client.request(
             "POST",
-            "/subject-api/search",
+            "/wefeed-mobile-bff/subject-api/search/v2",
             data={"keyword": keyword, "page": page, "pageSize": page_size}
         )
 
@@ -105,7 +105,7 @@ class MovieBoxContent:
         """Trending Row."""
         return self.client.request(
             "POST",
-            "/wefeed-mobile-bff/subject-api/trending/v2",
+            "/wefeed-mobile-bff/subject-api/top-rec",
             data={}
         )
 
