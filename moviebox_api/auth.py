@@ -2,12 +2,12 @@ import json
 import os
 from .utils import generate_client_token, get_default_client_info, md5_hex
 
-DEFAULT_GUEST_TOKEN = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1aWQiOjcwNjU5NDg0MTAyMTM4MTYyMzIsInV0cCI6MSwiZXhwIjoxNzkxNzMyMjMzLCJpYXQiOjE3ODM5NTU5MzN9.7iyEzTj4vWAbOF0oXwNnZ0p3Nc1QaO6K9eMiGFyVfGs"
+DEFAULT_GUEST_TOKEN = os.getenv("MOVIEBOX_GUEST_TOKEN", "")
 
 class MovieBoxAuth:
     def __init__(self, token: str = None, user_id: str = None):
         self.token = token or DEFAULT_GUEST_TOKEN
-        self.user_id = user_id or "7065948410213816232"
+        self.user_id = user_id or os.getenv("MOVIEBOX_GUEST_USER_ID", "")
         self.is_logged_in = False
         self.client_info = get_default_client_info()
         self.user_info = None
@@ -16,7 +16,7 @@ class MovieBoxAuth:
     def login_guest(self):
         """Perform guest login (Reset back to anonymous state)."""
         self.token = DEFAULT_GUEST_TOKEN
-        self.user_id = "7065948410213816232"
+        self.user_id = os.getenv("MOVIEBOX_GUEST_USER_ID", "")
         self.is_logged_in = False
         self.user_info = None
 

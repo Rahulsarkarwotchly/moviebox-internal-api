@@ -648,18 +648,21 @@ def get_search_suggestions(response: Response, q: Optional[str] = None, session_
         return {"code": 0, "data": []}
 
 @app.get("/search")
-def search(response: Response, q: str, page: int = 1, session_id: Optional[str] = Cookie(None)):
+def search(response: Response, q: str = Query(..., min_length=1, max_length=120), page: int = Query(1, ge=1, le=100), session_id: Optional[str] = Cookie(None)):
     s = get_session(session_id)
     response.set_cookie(key="session_id", value=s["id"], httponly=True, samesite="lax")
     try:
-        if not q.strip():
+        query = q.strip()
+        if not query:
             return {"code": 0, "data": {"items": []}}
-        res = s["content"].search(q.strip(), page=page)
-        logger.info(f"SEARCH RAW ({q}): {json.dumps(res, default=str)[:2000]}")
+        res = s["content"].search(query, page=page)
+        logger.info("SEARCH RAW (%s): %s", query, json.dumps(res, default=str)[:2000])
+        if isinstance(res, dict) and int(res.get("code", 0) or 0) >= 400:
+            raise HTTPException(status_code=502, detail="MovieBox search upstream returned an error")
         items = _extract_items(res)
         return {"code": 0, "data": {"items": [map_item(i) for i in items[:40] if isinstance(i, dict)]}}
     except Exception as e:
-        logger.exception("Search upstream error for %s", q)
+        logger.exception("Search upstream error for %s", query)
         raise HTTPException(status_code=502, detail=f"MovieBox search unavailable: {e}")
 
 @app.get("/rooms/recommend")

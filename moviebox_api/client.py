@@ -1,6 +1,7 @@
 import requests
 import json
 import logging
+import os
 import time
 from typing import Optional, Dict, Any
 from urllib.parse import urlencode, urlparse
@@ -41,8 +42,8 @@ class MovieBoxClient:
             "X-Play-Mode": "2"
         }
         # These IDs are extracted from official AndroidManifest
-        headers["appid"] = "302770f8bb6543ce8bdff585943a1eca"
-        headers["appkey"] = "a9d263ae575d4f5d94eab086a150c67e"
+        headers["appid"] = os.getenv("MOVIEBOX_APP_ID", "")
+        headers["appkey"] = os.getenv("MOVIEBOX_APP_KEY", "")
         headers["region"] = "IN"
         headers["lang"] = "en"
         headers["os"] = "android"
@@ -152,7 +153,7 @@ class MovieBoxClient:
         
         # Pin device info for GSLB stability
         package_name = "com.community.mbox.in"
-        device_id = "868203051234567" # Match test script
+        device_id = os.getenv("MOVIEBOX_DEVICE_ID", "")
         key = sha256_hex(device_id)
         
         # Build payload in exact Smali order
@@ -265,6 +266,11 @@ class MovieBoxClient:
                         timeout=kwargs.get("timeout", 15)
                     )
             
+            # Preserve upstream failures so route handlers can return an actionable 502
+            # instead of turning an HTTP error into a misleading empty success payload.
+            if not response.ok:
+                return {"code": response.status_code, "msg": f"MovieBox upstream HTTP {response.status_code}", "data": {}}
+
             # Gracefully handle non-JSON responses (e.g. "ok")
             try:
                 return response.json()

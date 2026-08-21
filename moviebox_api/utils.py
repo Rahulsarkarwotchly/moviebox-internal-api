@@ -6,9 +6,10 @@ import json
 from typing import Union, Optional
 from urllib.parse import urlparse, parse_qsl, urlencode, quote
 import logging
+import os
 logger = logging.getLogger(__name__)
 
-GATEWAY_SECRET_ONLINE = "76iRl07s0xSN9jqmEWAt79EBJZulIQIsV64FZr2O"
+GATEWAY_SECRET_ONLINE = os.getenv("MOVIEBOX_GATEWAY_SECRET", "")
 
 def md5_hex(data: Union[str, bytes]) -> str:
     """Calculates MD5 hash of string or bytes and returns hex string."""
@@ -81,6 +82,8 @@ def generate_tr_signature(method: str, url: str, body_data: str = "", timestamp:
     logger.info(f"CANONICAL STRING:\n{canonical_string}")
     
     # App base64 decodes the secret key (Online Secret)
+    if not GATEWAY_SECRET_ONLINE:
+        raise RuntimeError("MOVIEBOX_GATEWAY_SECRET is not configured")
     key = base64.b64decode(GATEWAY_SECRET_ONLINE)
     h = hmac.new(key, canonical_string.encode('utf-8'), hashlib.md5)
     
