@@ -23,6 +23,17 @@ logger = logging.getLogger(__name__)
 
 app = FastAPI(title="MovieBox Unofficial API Backend")
 
+
+@app.get("/")
+def root_health():
+    """Lightweight Render/Uvicorn health endpoint."""
+    return {"status": "ok", "service": "moviebox-internal-api"}
+
+
+@app.get("/health")
+def health_check():
+    return {"status": "ok"}
+
 # Enable CORS for local and deployed Wotchly frontends.
 # Render/Netlify deployments have historically used both variable names, so
 # treat FRONTEND_URL as a backwards-compatible alias for CORS_ORIGINS.

@@ -8,7 +8,7 @@ class MovieBoxAuth:
     def __init__(self, token: str = None, user_id: str = None):
         self.token = token or DEFAULT_GUEST_TOKEN
         self.user_id = user_id or "7065948410213816232"
-        self.is_logged_in = True
+        self.is_logged_in = False
         self.client_info = get_default_client_info()
         self.user_info = None
         # REMOVED: self.load_session() - We no longer use a global file for multiple sessions
@@ -17,7 +17,7 @@ class MovieBoxAuth:
         """Perform guest login (Reset back to anonymous state)."""
         self.token = DEFAULT_GUEST_TOKEN
         self.user_id = "7065948410213816232"
-        self.is_logged_in = True
+        self.is_logged_in = False
         self.user_info = None
 
     def update_session(self, token: str, user_id: str = None, user_info: dict = None):
