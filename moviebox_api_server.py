@@ -426,10 +426,20 @@ def get_trending(response: Response, session_id: Optional[str] = Cookie(None)):
     s = get_session(session_id)
     response.set_cookie(key="session_id", value=s["id"], httponly=True, samesite="lax")
     try:
-        res = s["content"].get_trending()
-        logger.info(f"TRENDING RAW: {json.dumps(res, default=str)[:2000]}")
-        items = _extract_items(res)
-        return {"code": 0, "data": [map_item(i) for i in items[:40] if isinstance(i, dict)]}
+        # MovieBox has moved the guest home feed between BFF endpoints. Try
+        # known contracts and return the first non-empty catalogue.
+        candidates = [
+            s["content"].get_trending(),
+            s["content"].get_home_list(category_id=1),
+            s["content"].get_categories(category_id=1, page=1),
+        ]
+        for res in candidates:
+            logger.info("TRENDING RAW: %s", json.dumps(res, default=str)[:1200])
+            items = _extract_items(res)
+            mapped = [map_item(i) for i in items[:40] if isinstance(i, dict)]
+            if mapped:
+                return {"code": 0, "data": mapped}
+        return {"code": 0, "data": [], "meta": {"source": "moviebox", "empty": True}}
     except Exception as e:
         logger.exception("Trending upstream error")
         raise HTTPException(status_code=502, detail=f"MovieBox trending unavailable: {e}")
