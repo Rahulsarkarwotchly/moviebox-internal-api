@@ -24,7 +24,14 @@ logger = logging.getLogger(__name__)
 app = FastAPI(title="MovieBox Unofficial API Backend")
 
 # Enable CORS for local and deployed Wotchly frontends.
-_allowed_origins = [origin.strip() for origin in os.getenv("CORS_ORIGINS", "").split(",") if origin.strip()]
+# Render/Netlify deployments have historically used both variable names, so
+# treat FRONTEND_URL as a backwards-compatible alias for CORS_ORIGINS.
+_allowed_origins = [
+    origin.strip()
+    for raw in (os.getenv("CORS_ORIGINS", ""), os.getenv("FRONTEND_URL", ""))
+    for origin in raw.split(",")
+    if origin.strip()
+]
 _allowed_origins += ["http://localhost:3000", "http://localhost:3001", "http://127.0.0.1:3000", "http://127.0.0.1:3001"]
 app.add_middleware(
     CORSMiddleware,
